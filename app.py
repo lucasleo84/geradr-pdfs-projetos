@@ -1,11 +1,10 @@
 import pandas as pd
 from io import BytesIO
 from reportlab.lib.pagesizes import A4
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from reportlab.pdfgen import canvas
-from reportlab.lib.units import mm
 import zipfile
 import streamlit as st
 
@@ -69,9 +68,7 @@ if uploaded_file is not None:
     story = []
 
     for _, row in df.iterrows():
-        story.append(Spacer(1, 60))  # espaço para o título desenhado no canvas
         for grupo in agrupamentos:
-            data = []
             for col in grupo:
                 valor = row[col]
                 if pd.isna(valor) or str(valor).strip() == "":
@@ -80,15 +77,7 @@ if uploaded_file is not None:
                 if texto.startswith("http"):
                     texto = f"<a href='{texto}' color='blue'><u>Clique aqui para acessar</u></a>"
                 paragrafo = Paragraph(f"<b>{col}:</b> {texto}", justified)
-                data.append([paragrafo])
-            if data:
-                tabela = Table(data, colWidths=[A4[0] - 60])
-                tabela.setStyle(TableStyle([
-                    ('BOX', (0, 0), (-1, -1), 1, colors.black),
-                    ('INNERGRID', (0, 0), (-1, -1), 1, colors.black),
-                    ('VALIGN', (0, 0), (-1, -1), 'TOP')
-                ]))
-                story.append(tabela)
+                story.append(paragrafo)
                 story.append(Spacer(1, 10))
         story.append(PageBreak())
 
