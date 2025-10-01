@@ -62,6 +62,10 @@ style_title = ParagraphStyle(
     leading=18,
     spaceAfter=12,
 )
+
+from reportlab.lib import colors
+
+# Estilo para itens com link azul e sublinhado
 style_item = ParagraphStyle(
     "ItemJustificado",
     parent=base_styles["Normal"],
