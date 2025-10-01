@@ -62,45 +62,32 @@ style_title = ParagraphStyle(
     leading=18,
     spaceAfter=12,
 )
-
-from reportlab.lib import colors
-
-# Estilo para itens com link azul e sublinhado
 style_item = ParagraphStyle(
     "ItemJustificado",
     parent=base_styles["Normal"],
     alignment=TA_JUSTIFY,
     fontSize=10,
     leading=14,
-    spaceAfter=6,
-    textColor=colors.black  # cor padrão do texto normal
+    spaceAfter=4,   # menos espaçamento entre itens
 )
 
-# Expressão regular de URLs
+# Regex para identificar URLs
 URL_RE = re.compile(r"(https?://[^\s<>]+)", flags=re.IGNORECASE)
 
 def to_clickable(texto: str) -> str:
+    """
+    Converte URLs em: [clique aqui para acessar] clicável,
+    azul e sublinhado. Mantém o restante do texto escapado.
+    """
     parts, last = [], 0
     for m in URL_RE.finditer(texto):
         parts.append(xml_escape(texto[last:m.start()]))
         url = m.group(0).rstrip(').,;')
-        # link azul sublinhado
         parts.append(
-            f'<link href="{url}" color="blue"><u>[clique aqui para acessar]</u></link>'
+            f'<font color="blue"><u>'
+            f'<link href="{url}">[clique aqui para acessar]</link>'
+            f'</u></font>'
         )
-        last = m.end()
-    parts.append(xml_escape(texto[last:]))
-    return "".join(parts)
-
-# Transformar URLs em link clicável com o texto [clique aqui para acessar]
-URL_RE = re.compile(r"(https?://[^\s<>]+)", flags=re.IGNORECASE)
-
-def to_clickable(texto: str) -> str:
-    parts, last = [], 0
-    for m in URL_RE.finditer(texto):
-        parts.append(xml_escape(texto[last:m.start()]))
-        url = m.group(0).rstrip(').,;')
-        parts.append(f'<link href="{url}">[clique aqui para acessar]</link>')
         last = m.end()
     parts.append(xml_escape(texto[last:]))
     return "".join(parts)
@@ -131,20 +118,24 @@ def gerar_pdf(dados: pd.Series) -> BytesIO:
     elementos.append(Paragraph(TITULO, style_title))
     elementos.append(Spacer(1, 6))
 
+    # Evitar duplicação
+    vistos = set()
+
     for coluna, valor in dados.items():
         if pd.notna(valor) and str(valor).strip() != "":
             raw = str(valor)
             texto_valor = to_clickable(raw)
-            texto = f"<b>{xml_escape(str(coluna))}:</b> {texto_valor}"
-            elementos.append(Paragraph(texto, style_item))
+            html = f"<b>{xml_escape(str(coluna))}:</b> {texto_valor}"
 
-    # >>> CORREÇÃO AQUI: aceitar *args, **kwargs <<<
+            if html not in vistos:  # não repete parágrafos iguais
+                elementos.append(Paragraph(html, style_item))
+                vistos.add(html)
+
     def _canvasmaker(*args, **kwargs):
         kwargs["print_ts"] = ts
         return NumberedCanvas(*args, **kwargs)
 
     doc.build(elementos, canvasmaker=_canvasmaker)
-
     buffer.seek(0)
     return buffer
 
@@ -159,7 +150,6 @@ if arquivo:
 
         arquivos_pdfs = []
         for i, linha in df.iterrows():
-            # .get em Series funciona; fallback seguro
             nome_base = linha.get("Nome", f"projeto_{i+1}")
             nome = str(nome_base).strip() or f"projeto_{i+1}"
             nome = (nome
