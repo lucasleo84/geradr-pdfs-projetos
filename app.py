@@ -1,9 +1,13 @@
+# streamlit_app.py
+# Este script pode ser executado no Streamlit Cloud
 
 import pandas as pd
 from io import BytesIO
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_CENTER
+from reportlab.lib import colors
 import zipfile
 import streamlit as st
 
@@ -23,10 +27,30 @@ def gerar_pdf(dados):
     estilos = getSampleStyleSheet()
     elementos = []
 
+    # Estilo do título centralizado
+    titulo_style = ParagraphStyle(
+        name="TituloCentralizado",
+        parent=estilos["Title"],
+        alignment=TA_CENTER,
+        fontSize=14,
+        textColor=colors.HexColor("#000000")
+    )
+
+    # Adicionar título principal
+    titulo = "Plataforma Leonardo - Disciplina de Ética em Pesquisa - PPGCiMH - FEFF/UFAM"
+    elementos.append(Paragraph(titulo, titulo_style))
+    elementos.append(Spacer(1, 24))
+
+    # Adicionar os dados preenchidos (ignorando colunas vazias e formatando links como "clique aqui")
     for coluna, valor in dados.items():
-        texto = f"<b>{coluna}:</b> {valor}"
-        elementos.append(Paragraph(texto, estilos["Normal"]))
-        elementos.append(Spacer(1, 12))
+        if pd.notna(valor) and str(valor).strip() != "":
+            valor_str = str(valor).strip()
+            if valor_str.startswith("http://") or valor_str.startswith("https://"):
+                texto = f"<b>{coluna}:</b> <a href='{valor_str}' color='blue'>clique aqui para acessar</a>"
+            else:
+                texto = f"<b>{coluna}:</b> {valor_str}"
+            elementos.append(Paragraph(texto, estilos["Normal"]))
+            elementos.append(Spacer(1, 12))
 
     doc.build(elementos)
     buffer.seek(0)
