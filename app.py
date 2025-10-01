@@ -1,3 +1,4 @@
+
 import re
 import zipfile
 from io import BytesIO
@@ -16,7 +17,7 @@ from xml.sax.saxutils import escape as xml_escape
 
 st.set_page_config(page_title="Gerador de PDFs para Projetos", layout="centered")
 
-# ====== Configurações Gerais ======
+# ====== Configurações ======
 TITULO = "PLATAFORMA LEONARDO - DISCIPLINA DE ÉTICA EM PESQUISA - PPGCIMH - FEFF/UFAM"
 
 # Canvas numerado com timestamp
@@ -31,7 +32,6 @@ class NumberedCanvas(canvas.Canvas):
         super().showPage()
 
     def save(self):
-        # total de páginas
         num_pages = len(self._saved_page_states)
         for state in self._saved_page_states:
             self.__dict__.update(state)
@@ -48,9 +48,9 @@ class NumberedCanvas(canvas.Canvas):
             self.drawString(12 * mm, y, f"Impresso em: {self.print_ts}")
         # número da página (direita)
         self.setFont("Helvetica", 9)
-        text = f"{self._pageNumber}/{page_count}"
-        text_w = self.stringWidth(text, "Helvetica", 9)
-        self.drawString(w - 12*mm - text_w, y, text)
+        texto = f"{self._pageNumber}/{page_count}"
+        tw = self.stringWidth(texto, "Helvetica", 9)
+        self.drawString(w - 12 * mm - tw, y, texto)
 
 # Estilos
 base_styles = getSampleStyleSheet()
@@ -71,20 +71,14 @@ style_item = ParagraphStyle(
     spaceAfter=6,
 )
 
-# Util: transformar URLs em link clicável com o texto [clique aqui para acessar]
+# Transformar URLs em link clicável com o texto [clique aqui para acessar]
 URL_RE = re.compile(r"(https?://[^\s<>]+)", flags=re.IGNORECASE)
 
 def to_clickable(texto: str) -> str:
-    """
-    Escapa partes não-URL e substitui URLs por <link href="...">[clique aqui para acessar]</link>.
-    Suporta múltiplos links na mesma célula.
-    """
-    parts = []
-    last = 0
+    parts, last = [], 0
     for m in URL_RE.finditer(texto):
-        # parte antes do link (escapada)
         parts.append(xml_escape(texto[last:m.start()]))
-        url = m.group(0).rstrip(').,;')  # remove pontuação final comum
+        url = m.group(0).rstrip(').,;')
         parts.append(f'<link href="{url}">[clique aqui para acessar]</link>')
         last = m.end()
     parts.append(xml_escape(texto[last:]))
@@ -99,28 +93,23 @@ arquivo = st.file_uploader("Escolha o arquivo .xlsx", type="xlsx")
 # ====== Geração do PDF ======
 def gerar_pdf(dados: pd.Series) -> BytesIO:
     buffer = BytesIO()
-
-    # timestamp da impressão (agora)
     ts = datetime.now().strftime("%d/%m/%Y %H:%M")
 
     doc = SimpleDocTemplate(
         buffer,
         pagesize=A4,
-        leftMargin=20*mm,
-        rightMargin=20*mm,
-        topMargin=20*mm,
-        bottomMargin=20*mm,
+        leftMargin=20 * mm,
+        rightMargin=20 * mm,
+        topMargin=20 * mm,
+        bottomMargin=20 * mm,
         title="Relatório - Plataforma Leonardo",
         author="Plataforma Leonardo",
     )
 
     elementos = []
-
-    # TÍTULO (primeiro elemento)
     elementos.append(Paragraph(TITULO, style_title))
     elementos.append(Spacer(1, 6))
 
-    # Conteúdo linha a linha (texto justificado e com links clicáveis)
     for coluna, valor in dados.items():
         if pd.notna(valor) and str(valor).strip() != "":
             raw = str(valor)
@@ -128,9 +117,10 @@ def gerar_pdf(dados: pd.Series) -> BytesIO:
             texto = f"<b>{xml_escape(str(coluna))}:</b> {texto_valor}"
             elementos.append(Paragraph(texto, style_item))
 
-    # Build com canvas numerado e timestamp
-    def _canvasmaker(filename, pagesize):
-        return NumberedCanvas(filename, pagesize=pagesize, print_ts=ts)
+    # >>> CORREÇÃO AQUI: aceitar *args, **kwargs <<<
+    def _canvasmaker(*args, **kwargs):
+        kwargs["print_ts"] = ts
+        return NumberedCanvas(*args, **kwargs)
 
     doc.build(elementos, canvasmaker=_canvasmaker)
 
@@ -148,9 +138,13 @@ if arquivo:
 
         arquivos_pdfs = []
         for i, linha in df.iterrows():
+            # .get em Series funciona; fallback seguro
             nome_base = linha.get("Nome", f"projeto_{i+1}")
             nome = str(nome_base).strip() or f"projeto_{i+1}"
-            nome = nome.replace("/", "-").replace("\\", "-").replace(" ", "_")
+            nome = (nome
+                    .replace("/", "-")
+                    .replace("\\", "-")
+                    .replace(" ", "_"))
             buffer_pdf = gerar_pdf(linha)
             arquivos_pdfs.append((f"{nome}.pdf", buffer_pdf.read()))
 
