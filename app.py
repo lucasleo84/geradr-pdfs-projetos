@@ -69,7 +69,24 @@ style_item = ParagraphStyle(
     fontSize=10,
     leading=14,
     spaceAfter=6,
+    textColor=colors.black  # cor padrão do texto normal
 )
+
+# Expressão regular de URLs
+URL_RE = re.compile(r"(https?://[^\s<>]+)", flags=re.IGNORECASE)
+
+def to_clickable(texto: str) -> str:
+    parts, last = [], 0
+    for m in URL_RE.finditer(texto):
+        parts.append(xml_escape(texto[last:m.start()]))
+        url = m.group(0).rstrip(').,;')
+        # link azul sublinhado
+        parts.append(
+            f'<link href="{url}" color="blue"><u>[clique aqui para acessar]</u></link>'
+        )
+        last = m.end()
+    parts.append(xml_escape(texto[last:]))
+    return "".join(parts)
 
 # Transformar URLs em link clicável com o texto [clique aqui para acessar]
 URL_RE = re.compile(r"(https?://[^\s<>]+)", flags=re.IGNORECASE)
