@@ -1,93 +1,86 @@
-# streamlit_app.py
-# Este script pode ser executado no Streamlit Cloud
-
 import pandas as pd
 from io import BytesIO
 from reportlab.lib.pagesizes import A4
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_CENTER
 from reportlab.lib import colors
+from reportlab.pdfgen import canvas
+from reportlab.lib.units import mm
 import zipfile
 import streamlit as st
 
 st.set_page_config(page_title="Gerador de PDFs para Projetos", layout="centered")
-
-# Título da interface
 st.title("Gerador de PDFs para Projetos")
-st.write("Faça o upload de um arquivo Excel com os dados dos projetos. Um PDF será gerado para cada linha da planilha.")
 
-# Upload do arquivo Excel
-arquivo = st.file_uploader("Escolha o arquivo .xlsx", type="xlsx")
+uploaded_file = st.file_uploader("Escolha um arquivo Excel (.xlsx)", type="xlsx")
 
-# Função para gerar PDF a partir de uma linha do DataFrame
-def gerar_pdf(dados):
+if uploaded_file is not None:
+    df = pd.read_excel(uploaded_file)
+    df.dropna(axis=1, how="all", inplace=True)
+
+    colunas = df.columns.tolist()
+    agrupamentos = []
+    grupo = []
+    for col in colunas:
+        if col.lower().startswith("grupo") and grupo:
+            agrupamentos.append(grupo)
+            grupo = [col]
+        else:
+            grupo.append(col)
+    if grupo:
+        agrupamentos.append(grupo)
+
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4)
-    estilos = getSampleStyleSheet()
-    elementos = []
 
-    # Estilo do título centralizado
-    titulo_style = ParagraphStyle(
-        name="TituloCentralizado",
-        parent=estilos["Title"],
-        alignment=TA_CENTER,
-        fontSize=14,
-        textColor=colors.HexColor("#000000")
-    )
+    def header_footer(canvas, doc):
+        canvas.saveState()
+        canvas.setFont('Helvetica', 8)
+        canvas.drawString(30, 15, "Plataforma Leonardo")
+        canvas.drawRightString(A4[0] - 30, 15, f"{doc.page} / {doc.pageCount}")
+        canvas.restoreState()
 
-    # Adicionar título principal
-    titulo = "Plataforma Leonardo - Disciplina de Ética em Pesquisa - PPGCiMH - FEFF/UFAM"
-    elementos.append(Paragraph(titulo, titulo_style))
-    elementos.append(Spacer(1, 24))
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=60, bottomMargin=40)
+    styles = getSampleStyleSheet()
+    justified = ParagraphStyle(name="Justificado", parent=styles["Normal"], alignment=4)
+    story = []
 
-    # Adicionar os dados preenchidos (ignorando colunas vazias e formatando links como "clique aqui")
-    for coluna, valor in dados.items():
-        if pd.notna(valor) and str(valor).strip() != "":
-            valor_str = str(valor).strip()
-            if valor_str.startswith("http://") or valor_str.startswith("https://"):
-                texto = f"<b>{coluna}:</b> <a href='{valor_str}' color='blue'>clique aqui para acessar</a>"
-            else:
-                texto = f"<b>{coluna}:</b> {valor_str}"
-            elementos.append(Paragraph(texto, estilos["Normal"]))
-            elementos.append(Spacer(1, 12))
+    titulo = Paragraph("<para align='center'><b><font size=14>PLATAFORMA LEONARDO - DISCIPLINA DE ÉTICA EM PESQUISA - PPGCIMH - FEFF/UFAM</font></b></para>", styles["Normal"])
+    caixa_titulo = Table([[titulo]], colWidths=A4[0] - 60)
+    caixa_titulo.setStyle(TableStyle([
+        ('BOX', (0, 0), (-1, -1), 1, colors.black),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER')
+    ]))
+    story.append(caixa_titulo)
+    story.append(Spacer(1, 20))
 
-    doc.build(elementos)
+    for _, row in df.iterrows():
+        for grupo in agrupamentos:
+            data = []
+            for col in grupo:
+                valor = row[col]
+                if isinstance(valor, str) and valor.startswith("http"):
+                    texto = f"<a href='{valor}' color='blue'><u>Clique aqui para acessar</u></a>"
+                else:
+                    texto = str(valor)
+                paragrafo = Paragraph(f"<b>{col}:</b> {texto}", justified)
+                data.append([paragrafo])
+            tabela = Table(data, colWidths=[A4[0] - 60])
+            tabela.setStyle(TableStyle([
+                ('BOX', (0, 0), (-1, -1), 1, colors.black),
+                ('INNERGRID', (0, 0), (-1, -1), 1, colors.black),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP')
+            ]))
+            story.append(tabela)
+            story.append(Spacer(1, 10))
+        story.append(PageBreak())
+
+    doc.build(story, onLaterPages=header_footer, onFirstPage=header_footer)
+
     buffer.seek(0)
-    return buffer
+    zip_buffer = BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        zip_file.writestr("relatorio.pdf", buffer.read())
 
-# Processamento
-if arquivo:
-    df = pd.read_excel(arquivo)
-    st.success(f"{len(df)} projetos encontrados na planilha.")
-
-    arquivos_pdfs = []
-
-    for i, linha in df.iterrows():
-        nome = linha.get("Nome", f"projeto_{i+1}").replace(" ", "_")
-        buffer_pdf = gerar_pdf(linha)
-        arquivos_pdfs.append((f"{nome}.pdf", buffer_pdf.read()))
-
-    # Geração do ZIP para download
-    buffer_zip = BytesIO()
-    with zipfile.ZipFile(buffer_zip, "w") as zipf:
-        for nome_arquivo, conteudo in arquivos_pdfs:
-            zipf.writestr(nome_arquivo, conteudo)
-    buffer_zip.seek(0)
-
-    st.download_button(
-        label="📦 Baixar todos os PDFs em um ZIP",
-        data=buffer_zip,
-        file_name="projetos_pdfs.zip",
-        mime="application/zip"
-    )
-
-    st.write("---")
-    st.write("### Visualizar PDFs individualmente")
-    for nome_arquivo, conteudo in arquivos_pdfs:
-        st.download_button(
-            label=f"⬇️ Baixar {nome_arquivo}",
-            data=conteudo,
-            file_name=nome_arquivo,
-            mime="application/pdf"
-        )
+    zip_buffer.seek(0)
+    st.download_button(label="📥 Baixar PDF", data=zip_buffer, file_name="relatorio.zip", mime="application/zip")
