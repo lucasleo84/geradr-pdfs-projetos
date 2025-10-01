@@ -36,7 +36,7 @@ if uploaded_file is not None:
         canvas.saveState()
         canvas.setFont('Helvetica', 8)
         canvas.drawString(30, 15, "Plataforma Leonardo")
-        canvas.drawRightString(A4[0] - 30, 15, f"{canvas.getPageNumber()} / ...")
+        canvas.drawRightString(A4[0] - 30, 15, f"{canvas.getPageNumber()}")
         canvas.restoreState()
 
     doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=60, bottomMargin=40)
