@@ -1,92 +1,70 @@
 import pandas as pd
 from io import BytesIO
 from reportlab.lib.pagesizes import A4
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib import colors
+from reportlab.lib.enums import TA_JUSTIFY
+from reportlab.lib.units import cm
 from reportlab.pdfgen import canvas
-import zipfile
 import streamlit as st
+import os
+import re
 
-st.set_page_config(page_title="Gerador de PDFs para Projetos", layout="centered")
+# Título da interface
 st.title("Gerador de PDFs para Projetos")
+st.write("Faça o upload de um arquivo Excel com os dados dos projetos. Um PDF será gerado para cada linha da planilha.")
 
-uploaded_file = st.file_uploader("Escolha um arquivo Excel (.xlsx)", type="xlsx")
+# Upload do arquivo Excel
+arquivo = st.file_uploader("Escolha o arquivo .xlsx", type="xlsx")
 
-if uploaded_file is not None:
-    df = pd.read_excel(uploaded_file)
-    df.dropna(axis=1, how="all", inplace=True)
+# Estilo de parágrafo justificado
+estilos = getSampleStyleSheet()
+justificado = ParagraphStyle(name='Justificado', parent=estilos['Normal'], alignment=TA_JUSTIFY)
 
-    colunas = df.columns.tolist()
-    agrupamentos = []
-    grupo = []
-    for col in colunas:
-        if col.lower().startswith("grupo") and grupo:
-            agrupamentos.append(grupo)
-            grupo = [col]
-        else:
-            grupo.append(col)
-    if grupo:
-        agrupamentos.append(grupo)
+# Função para gerar PDF a partir de uma linha do DataFrame
+def gerar_pdf(dados, nome_arquivo):
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4)
+    elementos = []
 
-    class CustomCanvas(canvas.Canvas):
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-            self.pages = []
+    # Adiciona título centralizado em caixa com borda
+    titulo = "PLATAFORMA LEONARDO - DISCIPLINA DE ÉTICA EM PESQUISA - PPGCIMH - FEFF/UFAM"
+    elementos.append(Spacer(1, 12))
+    elementos.append(Paragraph(f'<para align="center"><b>{titulo}</b></para>', estilos['Title']))
+    elementos.append(Spacer(1, 12))
 
-        def showPage(self):
-            self.pages.append(dict(self.__dict__))
-            self._startPage()
+    # Adiciona informações do projeto, ignorando colunas vazias
+    for coluna, valor in dados.items():
+        if pd.notna(valor):
+            valor = str(valor)
+            if re.search(r'https?://', valor):
+                valor = f'<a href="{valor}">[Clique aqui para acessar]</a>'
+            texto = f"<b>{coluna}:</b> {valor}"
+            elementos.append(Paragraph(texto, justificado))
+            elementos.append(Spacer(1, 6))
 
-        def save(self):
-            page_count = len(self.pages)
-            for page_num, page in enumerate(self.pages, start=1):
-                self.__dict__.update(page)
-                self.draw_footer(page_num)
-                canvas.Canvas.showPage(self)
-            canvas.Canvas.save(self)
-
-        def draw_footer(self, page_num):
-            self.setFont('Helvetica', 8)
-            self.drawString(30, 15, "Plataforma Leonardo")
-            self.drawRightString(A4[0] - 30, 15, f"{page_num}")
-
-    def desenhar_titulo(canvas, doc):
+    def rodape(canvas, doc):
         canvas.saveState()
-        titulo = "PLATAFORMA LEONARDO - DISCIPLINA DE ÉTICA EM PESQUISA - PPGCIMH - FEFF/UFAM"
-        canvas.setFont("Helvetica-Bold", 12)
-        largura = A4[0] - 60
-        altura = A4[1] - 80
-        canvas.rect(30, altura - 20, largura, 40, stroke=1, fill=0)
-        canvas.drawCentredString(A4[0] / 2, altura, titulo)
+        canvas.setFont('Helvetica', 8)
+        canvas.drawString(2 * cm, 1.5 * cm, "Plataforma Leonardo")
+        canvas.drawRightString(A4[0] - 2 * cm, 1.5 * cm, f"Página {doc.page}")
         canvas.restoreState()
 
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=100, bottomMargin=40)
-    styles = getSampleStyleSheet()
-    justified = ParagraphStyle(name="Justificado", parent=styles["Normal"], alignment=4)
-    story = []
+    doc.build(elementos, onFirstPage=rodape, onLaterPages=rodape)
 
-    for _, row in df.iterrows():
-        for grupo in agrupamentos:
-            for col in grupo:
-                valor = row[col]
-                if pd.isna(valor) or str(valor).strip() == "":
-                    continue
-                texto = str(valor).strip()
-                if texto.startswith("http"):
-                    texto = f"<a href='{texto}' color='blue'><u>Clique aqui para acessar</u></a>"
-                paragrafo = Paragraph(f"<b>{col}:</b> {texto}", justified)
-                story.append(paragrafo)
-                story.append(Spacer(1, 10))
-        story.append(PageBreak())
+    with open(nome_arquivo, "wb") as f:
+        f.write(buffer.getbuffer())
 
-    doc.build(story, onFirstPage=desenhar_titulo, onLaterPages=desenhar_titulo, canvasmaker=CustomCanvas)
+# Processamento
+if arquivo:
+    df = pd.read_excel(arquivo)
+    pasta_saida = "pdfs_gerados"
+    os.makedirs(pasta_saida, exist_ok=True)
 
-    buffer.seek(0)
-    zip_buffer = BytesIO()
-    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-        zip_file.writestr("relatorio.pdf", buffer.read())
+    for i, linha in df.iterrows():
+        nome = linha.get("Nome", f"projeto_{i+1}")
+        nome = str(nome).strip().replace(" ", "_").replace("/", "-")
+        nome_arquivo = os.path.join(pasta_saida, f"{nome}.pdf")
+        gerar_pdf(linha, nome_arquivo)
 
-    zip_buffer.seek(0)
-    st.download_button(label="📥 Baixar PDF", data=zip_buffer, file_name="relatorio.zip", mime="application/zip")
+    st.success(f"{len(df)} PDFs foram gerados e salvos na pasta '{pasta_saida}'.")
