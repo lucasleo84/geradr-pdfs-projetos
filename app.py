@@ -68,3 +68,4 @@ if arquivo:
         gerar_pdf(linha, nome_arquivo)
 
     st.success(f"{len(df)} PDFs foram gerados e salvos na pasta '{pasta_saida}'.")
+
