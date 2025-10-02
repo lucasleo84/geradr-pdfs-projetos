@@ -20,6 +20,11 @@ st.set_page_config(page_title="Gerador de PDFs para Projetos", layout="centered"
 # ====== Configurações ======
 TITULO = "PLATAFORMA LEONARDO - DISCIPLINA DE ÉTICA EM PESQUISA - PPGCIMH - FEFF/UFAM"
 
+# --- util: nome base da coluna (sem sufixos .1, .2 etc.)
+COL_BASE_RE = re.compile(r"\.\d+$")
+def base_col(name: str) -> str:
+    return COL_BASE_RE.sub("", str(name).strip())
+
 # Canvas numerado com timestamp
 class NumberedCanvas(canvas.Canvas):
     def __init__(self, *args, **kwargs):
@@ -42,154 +47,9 @@ class NumberedCanvas(canvas.Canvas):
     def draw_footer(self, page_count):
         w, h = A4
         y = 10 * mm
-        # timestamp (esquerda)
         if self.print_ts:
             self.setFont("Helvetica", 9)
             self.drawString(12 * mm, y, f"Impresso em: {self.print_ts}")
-        # número da página (direita)
         self.setFont("Helvetica", 9)
         texto = f"{self._pageNumber}/{page_count}"
-        tw = self.stringWidth(texto, "Helvetica", 9)
-        self.drawString(w - 12 * mm - tw, y, texto)
-
-# ====== Estilos ======
-base_styles = getSampleStyleSheet()
-style_title = ParagraphStyle(
-    "TituloCentro",
-    parent=base_styles["Title"],
-    alignment=TA_CENTER,
-    fontSize=14,
-    leading=16,
-    spaceAfter=8,
-)
-style_item = ParagraphStyle(
-    "ItemJustificado",
-    parent=base_styles["Normal"],
-    alignment=TA_JUSTIFY,
-    fontSize=10,
-    leading=12,   # linha simples
-    spaceAfter=2, # espaço pequeno entre itens
-)
-
-# ====== Regex para identificar URLs ======
-URL_RE = re.compile(r"(https?://[^\s<>]+)", flags=re.IGNORECASE)
-
-def to_clickable(texto: str) -> str:
-    """
-    Converte URLs em: [clique aqui para acessar] clicável,
-    azul e sublinhado. Mantém o restante do texto escapado.
-    """
-    parts, last = [], 0
-    for m in URL_RE.finditer(texto):
-        parts.append(xml_escape(texto[last:m.start()]))
-        url = m.group(0).rstrip(').,;')
-        parts.append(
-            f'<font color="blue"><u>'
-            f'<link href="{url}">[clique aqui para acessar]</link>'
-            f'</u></font>'
-        )
-        last = m.end()
-    parts.append(xml_escape(texto[last:]))
-    return "".join(parts)
-
-# ====== Função de Geração do PDF ======
-def gerar_pdf(dados: pd.Series) -> BytesIO:
-    buffer = BytesIO()
-    ts = datetime.now().strftime("%d/%m/%Y %H:%M")
-
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=A4,
-        leftMargin=20 * mm,
-        rightMargin=20 * mm,
-        topMargin=20 * mm,
-        bottomMargin=20 * mm,
-        title="Relatório - Plataforma Leonardo",
-        author="Plataforma Leonardo",
-    )
-
-    elementos = []
-    elementos.append(Paragraph(TITULO, style_title))
-    elementos.append(Spacer(1, 4))
-
-    # Evitar duplicação literal de parágrafos
-    vistos = set()
-
-    for coluna, valor in dados.items():
-        if pd.notna(valor):
-            raw = str(valor).strip()
-            if raw == "":
-                continue
-
-            texto_valor = to_clickable(raw)
-            html = f"<b>{xml_escape(str(coluna))}:</b> {texto_valor}"
-
-            if html not in vistos:
-                elementos.append(Paragraph(html, style_item))
-                vistos.add(html)
-
-    def _canvasmaker(*args, **kwargs):
-        kwargs["print_ts"] = ts
-        return NumberedCanvas(*args, **kwargs)
-
-    doc.build(elementos, canvasmaker=_canvasmaker)
-    buffer.seek(0)
-    return buffer
-
-# ====== Interface Streamlit ======
-st.title("Gerador de PDFs para Projetos")
-st.write("Faça o upload de um arquivo Excel com os dados dos projetos. Um PDF será gerado para cada linha da planilha.")
-
-arquivo = st.file_uploader("Escolha o arquivo .xlsx", type="xlsx")
-
-if arquivo:
-    try:
-        df = pd.read_excel(arquivo)
-    except Exception as e:
-        st.error(f"Não consegui ler o Excel: {e}")
-    else:
-        st.success(f"{len(df)} projetos encontrados na planilha.")
-
-        arquivos_pdfs = []
-        for i, linha in df.iterrows():
-            # tenta nomes comuns; cai para projeto_{i+1}
-            nome_base = (
-                linha.get("Nome")
-                or linha.get("Nome do Pesquisador")
-                or linha.get("Título")
-                or f"projeto_{i+1}"
-            )
-            nome = str(nome_base).strip() or f"projeto_{i+1}"
-            nome = (nome
-                    .replace("/", "-")
-                    .replace("\\", "-")
-                    .replace(" ", "_"))
-            buffer_pdf = gerar_pdf(linha)
-            arquivos_pdfs.append((f"{nome}.pdf", buffer_pdf.read()))
-
-        # ZIP para download (key único)
-        buffer_zip = BytesIO()
-        with zipfile.ZipFile(buffer_zip, "w", zipfile.ZIP_DEFLATED) as zipf:
-            for nome_arquivo, conteudo in arquivos_pdfs:
-                zipf.writestr(nome_arquivo, conteudo)
-        buffer_zip.seek(0)
-
-        st.download_button(
-            label="📦 Baixar todos os PDFs em um ZIP",
-            data=buffer_zip,
-            file_name="projetos_pdfs.zip",
-            mime="application/zip",
-            key="btn_download_zip_all"   # <<< CHAVE ÚNICA
-        )
-
-        st.write("---")
-        st.write("### Visualizar PDFs individualmente")
-        # Cada botão com key única
-        for i, (nome_arquivo, conteudo) in enumerate(arquivos_pdfs):
-            st.download_button(
-                label=f"⬇️ Baixar {nome_arquivo}",
-                data=conteudo,
-                file_name=nome_arquivo,
-                mime="application/pdf",
-                key=f"btn_download_{i}_{nome_arquivo}"  # <<< CHAVE ÚNICA POR ITEM
-            )
+        tw = self.string
