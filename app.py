@@ -34,8 +34,8 @@ style_item = ParagraphStyle(
     parent=base_styles["Normal"],
     alignment=TA_JUSTIFY,
     fontSize=10,
-    leading=14,    # altura da linha um pouco maior
-    spaceAfter=6,  # <<< mais espaço entre cada item
+    leading=14,    # altura da linha
+    spaceAfter=8,  # espaço entre itens
 )
 
 # ====== Regex para identificar URLs ======
@@ -56,7 +56,7 @@ def to_clickable(texto: str) -> str:
     parts.append(xml_escape(texto[last:]))
     return "".join(parts)
 
-# ====== Função de Geração do PDF ======
+# ====== Geração do PDF (SEM paginação) ======
 def gerar_pdf(dados: pd.Series) -> BytesIO:
     buffer = BytesIO()
 
@@ -75,68 +75,49 @@ def gerar_pdf(dados: pd.Series) -> BytesIO:
     elementos.append(Paragraph(TITULO, style_title))
     elementos.append(Spacer(1, 4))
 
-        # Loop com regras adicionais
+    # evita inserir o mesmo parágrafo duas vezes
+    vistos = set()
+
+    # --- loop com regras de exibição personalizadas ---
     colunas = list(dados.index)
 
     for i, coluna in enumerate(colunas):
-        if pd.notna(dados[coluna]):
-            raw = str(dados[coluna]).strip()
-            if raw == "":
-                continue
+        valor = dados[coluna]
+        if not pd.notna(valor):
+            continue
 
-            # Caso especial: Bibliografia
-            if str(coluna).lower().startswith("bibliografia"):
-                refs = [r.strip() for r in raw.split("\n") if r.strip()]
-                elementos.append(Paragraph(f"<b>{xml_escape(str(coluna))}:</b>", style_item))
-                for ref in refs:
-                    elementos.append(Paragraph(xml_escape(ref), style_item))
+        raw = str(valor).strip()
+        if raw == "":
+            continue
 
-            else:
-                # Caso geral
-                texto_valor = to_clickable(raw)
-                html = f"<b>{xml_escape(str(coluna))}:</b> {texto_valor}"
-                if html not in vistos:
-                    elementos.append(Paragraph(html, style_item))
-                    vistos.add(html)
+        # 1) Bibliografia: cada referência em uma linha
+        if str(coluna).lower().startswith("bibliografia"):
+            refs = [r.strip() for r in raw.split("\n") if r.strip()]
+            elementos.append(Paragraph(f"<b>{xml_escape(str(coluna))}:</b>", style_item))
+            for ref in refs:
+                elementos.append(Paragraph(xml_escape(ref), style_item))
 
-            # Inserir Cronograma logo após ProjetoDetalhado / Brochura do Investigador
-            if coluna.strip().lower() == "projetodetalhado / brochura do investigador".lower():
-                if "Cronograma Detalhado" in dados.index and pd.notna(dados["Cronograma Detalhado"]):
-                    raw_crono = str(dados["Cronograma Detalhado"]).strip()
-                    if raw_crono:
-                        texto_valor = to_clickable(raw_crono)
-                        html = f"<b>Cronograma Detalhado:</b> {texto_valor}"
-                        if html not in vistos:
-                            elementos.append(Paragraph(html, style_item))
-                            vistos.add(html)
-                
-    # Evitar duplicação literal de parágrafos
-    vistos = set()
-
-    for coluna, valor in dados.items():
-        if pd.notna(valor):
-            raw = str(valor).strip()
-            if raw == "":
-                continue
-
-            # Caso especial: Bibliografia
-            if str(coluna).lower().startswith("bibliografia"):
-                refs = [r.strip() for r in raw.split("\n") if r.strip()]  # quebra por linhas
-                elementos.append(Paragraph(f"<b>{xml_escape(str(coluna))}:</b>", style_item))
-                for ref in refs:
-                    elementos.append(Paragraph(xml_escape(ref), style_item))
-                continue
-    
-            # Caso geral
+        else:
+            # 2) Caso geral
             texto_valor = to_clickable(raw)
             html = f"<b>{xml_escape(str(coluna))}:</b> {texto_valor}"
             if html not in vistos:
                 elementos.append(Paragraph(html, style_item))
                 vistos.add(html)
 
-    # Build normal (sem paginação/rodapé)
-    doc.build(elementos)
+        # 3) Inserir "Cronograma Detalhado" logo após "ProjetoDetalhado / Brochura do Investigador"
+        if coluna.strip().lower() == "projetodetalhado / brochura do investigador".lower():
+            if "Cronograma Detalhado" in dados.index and pd.notna(dados["Cronograma Detalhado"]):
+                raw_crono = str(dados["Cronograma Detalhado"]).strip()
+                if raw_crono:
+                    texto_valor = to_clickable(raw_crono)
+                    html = f"<b>Cronograma Detalhado:</b> {texto_valor}"
+                    if html not in vistos:
+                        elementos.append(Paragraph(html, style_item))
+                        vistos.add(html)
 
+    # build sem canvas customizado (sem paginação)
+    doc.build(elementos)
     buffer.seek(0)
     return buffer
 
@@ -156,6 +137,7 @@ if arquivo:
 
         arquivos_pdfs = []
         for i, linha in df.iterrows():
+            # nome do arquivo: tenta campos comuns; senão usa projeto_{i+1}
             nome_base = (
                 linha.get("Nome")
                 or linha.get("Nome do Pesquisador")
@@ -163,14 +145,12 @@ if arquivo:
                 or f"projeto_{i+1}"
             )
             nome = str(nome_base).strip() or f"projeto_{i+1}"
-            nome = (nome
-                    .replace("/", "-")
-                    .replace("\\", "-")
-                    .replace(" ", "_"))
+            nome = (nome.replace("/", "-").replace("\\", "-").replace(" ", "_"))
+
             buffer_pdf = gerar_pdf(linha)
             arquivos_pdfs.append((f"{nome}.pdf", buffer_pdf.read()))
 
-        # ZIP (key único)
+        # ZIP para download
         buffer_zip = BytesIO()
         with zipfile.ZipFile(buffer_zip, "w", zipfile.ZIP_DEFLATED) as zipf:
             for nome_arquivo, conteudo in arquivos_pdfs:
