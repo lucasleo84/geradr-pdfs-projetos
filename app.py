@@ -167,7 +167,7 @@ if arquivo:
             buffer_pdf = gerar_pdf(linha)
             arquivos_pdfs.append((f"{nome}.pdf", buffer_pdf.read()))
 
-        # ZIP para download
+        # ZIP para download (key único)
         buffer_zip = BytesIO()
         with zipfile.ZipFile(buffer_zip, "w", zipfile.ZIP_DEFLATED) as zipf:
             for nome_arquivo, conteudo in arquivos_pdfs:
@@ -178,15 +178,18 @@ if arquivo:
             label="📦 Baixar todos os PDFs em um ZIP",
             data=buffer_zip,
             file_name="projetos_pdfs.zip",
-            mime="application/zip"
+            mime="application/zip",
+            key="btn_download_zip_all"   # <<< CHAVE ÚNICA
         )
 
         st.write("---")
         st.write("### Visualizar PDFs individualmente")
-        for nome_arquivo, conteudo in arquivos_pdfs:
+        # Cada botão com key única
+        for i, (nome_arquivo, conteudo) in enumerate(arquivos_pdfs):
             st.download_button(
                 label=f"⬇️ Baixar {nome_arquivo}",
                 data=conteudo,
                 file_name=nome_arquivo,
-                mime="application/pdf"
+                mime="application/pdf",
+                key=f"btn_download_{i}_{nome_arquivo}"  # <<< CHAVE ÚNICA POR ITEM
             )
