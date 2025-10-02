@@ -79,15 +79,25 @@ def gerar_pdf(dados: pd.Series) -> BytesIO:
     vistos = set()
 
     for coluna, valor in dados.items():
-        if pd.notna(valor):
-            raw = str(valor).strip()
-            if raw == "":
-                continue
-            texto_valor = to_clickable(raw)
-            html = f"<b>{xml_escape(str(coluna))}:</b> {texto_valor}"
-            if html not in vistos:
-                elementos.append(Paragraph(html, style_item))
-                vistos.add(html)
+    if pd.notna(valor):
+        raw = str(valor).strip()
+        if raw == "":
+            continue
+
+        # Caso especial: Bibliografia
+        if str(coluna).lower().startswith("bibliografia"):
+            refs = [r.strip() for r in raw.split("\n") if r.strip()]  # quebra por linhas
+            elementos.append(Paragraph(f"<b>{xml_escape(str(coluna))}:</b>", style_item))
+            for ref in refs:
+                elementos.append(Paragraph(xml_escape(ref), style_item))
+            continue
+
+        # Caso geral
+        texto_valor = to_clickable(raw)
+        html = f"<b>{xml_escape(str(coluna))}:</b> {texto_valor}"
+        if html not in vistos:
+            elementos.append(Paragraph(html, style_item))
+            vistos.add(html)
 
     # Build normal (sem paginação/rodapé)
     doc.build(elementos)
