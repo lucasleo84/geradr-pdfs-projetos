@@ -27,15 +27,15 @@ style_title = ParagraphStyle(
     alignment=TA_CENTER,
     fontSize=14,
     leading=16,
-    spaceAfter=8,
+    spaceAfter=12,
 )
 style_item = ParagraphStyle(
     "ItemJustificado",
     parent=base_styles["Normal"],
     alignment=TA_JUSTIFY,
     fontSize=10,
-    leading=12,   # linha simples
-    spaceAfter=2, # respiro pequeno
+    leading=14,    # altura da linha um pouco maior
+    spaceAfter=6,  # <<< mais espaço entre cada item
 )
 
 # ====== Regex para identificar URLs ======
