@@ -75,6 +75,41 @@ def gerar_pdf(dados: pd.Series) -> BytesIO:
     elementos.append(Paragraph(TITULO, style_title))
     elementos.append(Spacer(1, 4))
 
+        # Loop com regras adicionais
+    colunas = list(dados.index)
+
+    for i, coluna in enumerate(colunas):
+        if pd.notna(dados[coluna]):
+            raw = str(dados[coluna]).strip()
+            if raw == "":
+                continue
+
+            # Caso especial: Bibliografia
+            if str(coluna).lower().startswith("bibliografia"):
+                refs = [r.strip() for r in raw.split("\n") if r.strip()]
+                elementos.append(Paragraph(f"<b>{xml_escape(str(coluna))}:</b>", style_item))
+                for ref in refs:
+                    elementos.append(Paragraph(xml_escape(ref), style_item))
+
+            else:
+                # Caso geral
+                texto_valor = to_clickable(raw)
+                html = f"<b>{xml_escape(str(coluna))}:</b> {texto_valor}"
+                if html not in vistos:
+                    elementos.append(Paragraph(html, style_item))
+                    vistos.add(html)
+
+            # Inserir Cronograma logo após ProjetoDetalhado / Brochura do Investigador
+            if coluna.strip().lower() == "projetodetalhado / brochura do investigador".lower():
+                if "Cronograma Detalhado" in dados.index and pd.notna(dados["Cronograma Detalhado"]):
+                    raw_crono = str(dados["Cronograma Detalhado"]).strip()
+                    if raw_crono:
+                        texto_valor = to_clickable(raw_crono)
+                        html = f"<b>Cronograma Detalhado:</b> {texto_valor}"
+                        if html not in vistos:
+                            elementos.append(Paragraph(html, style_item))
+                            vistos.add(html)
+                
     # Evitar duplicação literal de parágrafos
     vistos = set()
 
