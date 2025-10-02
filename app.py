@@ -52,26 +52,26 @@ class NumberedCanvas(canvas.Canvas):
         tw = self.stringWidth(texto, "Helvetica", 9)
         self.drawString(w - 12 * mm - tw, y, texto)
 
-# Estilos
+# ====== Estilos ======
 base_styles = getSampleStyleSheet()
 style_title = ParagraphStyle(
     "TituloCentro",
     parent=base_styles["Title"],
     alignment=TA_CENTER,
     fontSize=14,
-    leading=18,
-    spaceAfter=12,
+    leading=16,
+    spaceAfter=8,
 )
 style_item = ParagraphStyle(
     "ItemJustificado",
     parent=base_styles["Normal"],
     alignment=TA_JUSTIFY,
     fontSize=10,
-    leading=14,
-    spaceAfter=4,   # menos espaçamento entre itens
+    leading=12,   # linha simples
+    spaceAfter=2, # espaço pequeno entre itens
 )
 
-# Regex para identificar URLs
+# ====== Regex para identificar URLs ======
 URL_RE = re.compile(r"(https?://[^\s<>]+)", flags=re.IGNORECASE)
 
 def to_clickable(texto: str) -> str:
@@ -92,13 +92,7 @@ def to_clickable(texto: str) -> str:
     parts.append(xml_escape(texto[last:]))
     return "".join(parts)
 
-# ====== UI ======
-st.title("Gerador de PDFs para Projetos")
-st.write("Faça o upload de um arquivo Excel com os dados dos projetos. Um PDF será gerado para cada linha da planilha.")
-
-arquivo = st.file_uploader("Escolha o arquivo .xlsx", type="xlsx")
-
-# ====== Geração do PDF ======
+# ====== Função de Geração do PDF ======
 def gerar_pdf(dados: pd.Series) -> BytesIO:
     buffer = BytesIO()
     ts = datetime.now().strftime("%d/%m/%Y %H:%M")
@@ -116,18 +110,21 @@ def gerar_pdf(dados: pd.Series) -> BytesIO:
 
     elementos = []
     elementos.append(Paragraph(TITULO, style_title))
-    elementos.append(Spacer(1, 6))
+    elementos.append(Spacer(1, 4))
 
-    # Evitar duplicação
+    # Evitar duplicação literal de parágrafos
     vistos = set()
 
     for coluna, valor in dados.items():
-        if pd.notna(valor) and str(valor).strip() != "":
-            raw = str(valor)
+        if pd.notna(valor):
+            raw = str(valor).strip()
+            if raw == "":
+                continue
+
             texto_valor = to_clickable(raw)
             html = f"<b>{xml_escape(str(coluna))}:</b> {texto_valor}"
 
-            if html not in vistos:  # não repete parágrafos iguais
+            if html not in vistos:
                 elementos.append(Paragraph(html, style_item))
                 vistos.add(html)
 
@@ -139,7 +136,12 @@ def gerar_pdf(dados: pd.Series) -> BytesIO:
     buffer.seek(0)
     return buffer
 
-# ====== Processamento do Excel ======
+# ====== Interface Streamlit ======
+st.title("Gerador de PDFs para Projetos")
+st.write("Faça o upload de um arquivo Excel com os dados dos projetos. Um PDF será gerado para cada linha da planilha.")
+
+arquivo = st.file_uploader("Escolha o arquivo .xlsx", type="xlsx")
+
 if arquivo:
     try:
         df = pd.read_excel(arquivo)
@@ -150,7 +152,13 @@ if arquivo:
 
         arquivos_pdfs = []
         for i, linha in df.iterrows():
-            nome_base = linha.get("Nome", f"projeto_{i+1}")
+            # tenta nomes comuns; cai para projeto_{i+1}
+            nome_base = (
+                linha.get("Nome")
+                or linha.get("Nome do Pesquisador")
+                or linha.get("Título")
+                or f"projeto_{i+1}"
+            )
             nome = str(nome_base).strip() or f"projeto_{i+1}"
             nome = (nome
                     .replace("/", "-")
